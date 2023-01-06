@@ -136,7 +136,7 @@ struct alignas(16) Arguments {
     }
 };
 
-extern "C" void onExportFuncCall(Arguments * args, DllExport dllExport) {
+extern "C" void* onExportFuncCall(Arguments * args, DllExport dllExport) {
     size_t padding;
     auto idx = (int)dllExport;
 
@@ -156,9 +156,11 @@ extern "C" void onExportFuncCall(Arguments * args, DllExport dllExport) {
     args->toHex();
     dll->LogFile() << "\n";
 
+    void* result = nullptr;
     switch (dllExport) {
 /* DLLPROXY: DllCaseDispatch */
     }
+    return result;
 })";
 #pragma endregion
 
@@ -256,14 +258,14 @@ void generateMainCpp(std::string name, std::vector<std::string> dllExports) {
     buf.clear();
 
     for (unsigned int i = 0; i < dllExports.size(); i++) {
-        buf += std::string("static void Inject_") + dllExports[i] + "() {}\n";
+        buf += std::string("static void* Inject_") + dllExports[i] + "() { return nullptr; }\n";
     }
     replaceAll(text, "/* DLLPROXY: DllInjectedFunctions */", buf);
     buf.clear();
 
     for (unsigned int i = 0; i < dllExports.size(); i++) {
         buf += std::string("\tcase DllExport::") + dllExports[i] + ":\n";
-        buf += std::string("\t\tInject_") + dllExports[i] + "();\n";
+        buf += std::string("\t\tresult = Inject_") + dllExports[i] + "();\n";
         buf += std::string("\t\tbreak;\n");
     }
     replaceAll(text, "/* DLLPROXY: DllCaseDispatch */", buf);
