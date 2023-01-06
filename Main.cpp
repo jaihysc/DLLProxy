@@ -291,17 +291,12 @@ void generateAsm(std::string name, std::vector<std::string> dllExports) {
         file << std::endl;
         file << "Proxy_" << dllExport << " proc" << std::endl;
 
-        // Call onExportFuncCall, save arguments in struct
-        // Save every register which is violatile (callee does not restore) since this is __stdcall
-        file << "push rax" << std::endl;
-        file << "push rcx" << std::endl;
-        file << "push rdx" << std::endl;
-        file << "push r8" << std::endl;
-        file << "push r9" << std::endl;
-        file << "push r10" << std::endl;
-        file << "push r11" << std::endl;
-        file << "lea rsp, [rsp-16*10-32]" << std::endl; // -32 for shadow zone
-        // Save arguments in struct Argument
+        // Align stack to 16 (Required for Arguments struct)
+        file << "push rbp" << std::endl;
+        file << "mov rbp, rsp" << std::endl;
+        file << "and rsp, -16" << std::endl;
+        // Save registers in struct Arguments, they keep to restored since they are volatile
+        file << "sub rsp, 16*8+32" << std::endl; // -32 for shadow zone
         file << "mov [rsp+16*0+32], rcx" << std::endl;
         file << "mov [rsp+16*1+32], rdx" << std::endl;
         file << "mov [rsp+16*2+32], r8" << std::endl;
@@ -310,27 +305,23 @@ void generateAsm(std::string name, std::vector<std::string> dllExports) {
         file << "movdqu [rsp+16*5+32], xmm1" << std::endl;
         file << "movdqu [rsp+16*6+32], xmm2" << std::endl;
         file << "movdqu [rsp+16*7+32], xmm3" << std::endl;
-        file << "movdqu [rsp+16*8+32], xmm4" << std::endl; // Continue saving arguments here
-        file << "movdqu [rsp+16*9+32], xmm5" << std::endl;
         // Make call
         file << "lea rcx, [rsp+32]" << std::endl;
         file << "mov edx, 0" << std::hex << i << std::dec << "h" << std::endl;
         file << "call onExportFuncCall" << std::endl;
-        // Restore stack
-        file << "movdqu xmm5, [rsp+16*9+32]" << std::endl;
-        file << "movdqu xmm4, [rsp+16*8+32]" << std::endl;
+        // Restore registers
         file << "movdqu xmm3, [rsp+16*7+32]" << std::endl;
         file << "movdqu xmm2, [rsp+16*6+32]" << std::endl;
         file << "movdqu xmm1, [rsp+16*5+32]" << std::endl;
         file << "movdqu xmm0, [rsp+16*4+32]" << std::endl;
-        file << "lea rsp, [rsp+16*10+32]" << std::endl;
-        file << "pop r11" << std::endl;
-        file << "pop r10" << std::endl;
-        file << "pop r9" << std::endl;
-        file << "pop r8" << std::endl;
-        file << "pop rdx" << std::endl;
-        file << "pop rcx" << std::endl;
-        file << "pop rax" << std::endl;
+        file << "mov r9, [rsp+16*3+32]" << std::endl;
+        file << "mov r8, [rsp+16*2+32]" << std::endl;
+        file << "mov rdx, [rsp+16*1+32]" << std::endl;
+        file << "mov rcx, [rsp+16*0+32]" << std::endl;
+        file << "add rsp, 16*8+32" << std::endl;
+        // Restore stack
+        file << "mov rsp, rbp" << std::endl;
+        file << "pop rbp" << std::endl;
 
         // Jump to address of original function
         file << "jmp qword ptr [originalDllExports+0" << std::hex << i * 8 << std::dec << "h]" << std::endl;
