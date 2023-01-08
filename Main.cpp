@@ -20,7 +20,10 @@
 // It searches for text of the format: /* DLLPROXY: <key> */ and replaces it with the appropriate strings
     const auto* cppFileTemplate = R"(
 #include <Windows.h>
+#include <PathCch.h>
 #include <xmmintrin.h>
+
+#pragma comment(lib, "pathcch.lib")
 
 #include <mutex>
 #include <iostream>
@@ -69,10 +72,30 @@ private:
 } *dll = nullptr;
 
 bool Init() {
-    if ((originalDll = LoadLibraryW(L"/* DLLPROXY: DllName */_original.dll")) == NULL) {
-        Alert("Failed to load original dll");
-        return false;
-    }
+	// Search for original dll in the same directory as the proxy dll
+	HMODULE thisDll;
+	if (!GetModuleHandleExW(
+		GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+		(LPCWSTR)&Init,
+		&thisDll)) {
+		Alert("Failed to get handle to this dll");
+		return false;
+	}
+	wchar_t thisDllPath[MAX_PATH];
+	if (!GetModuleFileNameW(thisDll, thisDllPath, MAX_PATH)) {
+		Alert("Failed to get path to this dll");
+		return false;
+	}
+	if (PathCchRemoveFileSpec(thisDllPath, MAX_PATH) != S_OK) {
+		Alert("Failed to get directory to this dll");
+		return false;
+	}
+	wcscat_s(thisDllPath, MAX_PATH, L"\\/* DLLPROXY: DllName */_original.dll");
+	if ((originalDll = LoadLibraryW(thisDllPath)) == NULL) {
+		Alert("Failed to load original dll");
+		return false;
+	}
+
     for (int i = 0; i < /* DLLPROXY: DllNumExports */; ++i) {
         originalDllExports[i] = GetProcAddress(originalDll, originalDllExportsName[i]);
     }
