@@ -37,7 +37,7 @@ static void Alert(const wchar_t* msg) {
 
 extern "C" {
     HMODULE originalDll;
-    FARPROC originalDllExports[803];
+    FARPROC originalDllExports[/* DLLPROXY: DllNumExports */];
     const char* originalDllExportsName[] = {
 /* DLLPROXY: DllExportsName */
     };
@@ -73,7 +73,7 @@ bool Init() {
         Alert("Failed to load original dll");
         return false;
     }
-    for (int i = 0; i < 803; ++i) {
+    for (int i = 0; i < /* DLLPROXY: DllNumExports */; ++i) {
         originalDllExports[i] = GetProcAddress(originalDll, originalDllExportsName[i]);
     }
 
@@ -175,7 +175,6 @@ void replaceAll(std::string& str, const std::string& find, std::string replace) 
         std::size_t pos = str.find(find, lastPos);
         if (pos == std::string::npos) break;
 
-        std::cout << pos << "\n";
         // Text from lastPos to text before find
         newStr.append(str, lastPos, pos - lastPos);
         newStr.append(replace);
@@ -243,6 +242,8 @@ void generateMainCpp(std::string name, std::vector<std::string> dllExports) {
     std::string text = cppFileTemplate;
 
     replaceAll(text, "/* DLLPROXY: DllName */", name);
+
+    replaceAll(text, "/* DLLPROXY: DllNumExports */", std::to_string(dllExports.size()));
 
     std::string buf;
     for (unsigned int i = 0; i < dllExports.size(); i++) {
