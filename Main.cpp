@@ -193,6 +193,73 @@ extern "C" void* onExportFuncCall(Arguments * args, DllExport dllExport) {
 	}
 	return result;
 })";
+			const auto* asmFileTemplate = R"(
+fwdcall macro idx
+	; Align stack to 16 (Required for Arguments struct)
+	push rbp
+	mov rbp, rsp
+	and rsp, -16
+	; Save registers in struct Arguments, they keep to restored since they are volatile
+	sub rsp, 16*8+32
+	mov [rsp+16*0+32], rcx
+	mov [rsp+16*1+32], rdx
+	mov [rsp+16*2+32], r8
+	mov [rsp+16*3+32], r9
+	movdqu [rsp+16*4+32], xmm0
+	movdqu [rsp+16*5+32], xmm1
+	movdqu [rsp+16*6+32], xmm2
+	movdqu [rsp+16*7+32], xmm3
+	; Make call
+	lea rcx, [rsp+32]
+	mov edx, idx
+	call onExportFuncCall
+	; Restore registers
+	movdqu xmm3, [rsp+16*7+32]
+	movdqu xmm2, [rsp+16*6+32]
+	movdqu xmm1, [rsp+16*5+32]
+	movdqu xmm0, [rsp+16*4+32]
+	mov r9, [rsp+16*3+32]
+	mov r8, [rsp+16*2+32]
+	mov rdx, [rsp+16*1+32]
+	mov rcx, [rsp+16*0+32]
+	; Restore stack
+	add rsp, 16*8+32
+	mov rsp, rbp
+	pop rbp
+	; Jump to address of original function
+	jmp qword ptr [originalDllExports+idx*8]
+endm
+
+ovrdcall macro idx
+	; Align stack to 16 (Required for Arguments struct)
+	push rbp
+	mov rbp, rsp
+	and rsp, -16
+	; Save registers in struct Arguments, no restore necessary since we directly return
+	sub rsp, 16*8+32
+	mov [rsp+16*0+32], rcx
+	mov [rsp+16*1+32], rdx
+	mov [rsp+16*2+32], r8
+	mov [rsp+16*3+32], r9
+	movdqu [rsp+16*4+32], xmm0
+	movdqu [rsp+16*5+32], xmm1
+	movdqu [rsp+16*6+32], xmm2
+	movdqu [rsp+16*7+32], xmm3
+	; Make call, result in rax
+	lea rcx, [rsp+32]
+	mov edx, idx
+	call onExportFuncCall
+	; Restore stack
+	add rsp, 16*8+32
+	mov rsp, rbp
+	pop rbp
+	ret
+endm
+
+onExportFuncCall proto C
+.data
+extern originalDllExports : qword
+.code)";
 #pragma endregion
 
 std::vector<std::string> dllExports;
@@ -314,52 +381,13 @@ void generateMainCpp(std::string name, std::vector<std::string> dllExports) {
 void generateAsm(std::string name, std::vector<std::string> dllExports) {
 	std::fstream file;
 	file.open(name + ".asm", std::ios::out);
-	file << "onExportFuncCall proto C" << std::endl;
+	file << asmFileTemplate << std::endl;
 
-	file << ".data" << std::endl;
-	file << "extern originalDllExports : qword" << std::endl;
-
-	file << ".code" << std::endl;
 	for (size_t i = 0; i < dllExports.size(); ++i) {
 		const auto& dllExport = dllExports[i];
 		file << std::endl;
 		file << "Proxy_" << dllExport << " proc" << std::endl;
-
-		// Align stack to 16 (Required for Arguments struct)
-		file << "push rbp" << std::endl;
-		file << "mov rbp, rsp" << std::endl;
-		file << "and rsp, -16" << std::endl;
-		// Save registers in struct Arguments, they keep to restored since they are volatile
-		file << "sub rsp, 16*8+32" << std::endl; // -32 for shadow zone
-		file << "mov [rsp+16*0+32], rcx" << std::endl;
-		file << "mov [rsp+16*1+32], rdx" << std::endl;
-		file << "mov [rsp+16*2+32], r8" << std::endl;
-		file << "mov [rsp+16*3+32], r9" << std::endl;
-		file << "movdqu [rsp+16*4+32], xmm0" << std::endl;
-		file << "movdqu [rsp+16*5+32], xmm1" << std::endl;
-		file << "movdqu [rsp+16*6+32], xmm2" << std::endl;
-		file << "movdqu [rsp+16*7+32], xmm3" << std::endl;
-		// Make call
-		file << "lea rcx, [rsp+32]" << std::endl;
-		file << "mov edx, 0" << std::hex << i << std::dec << "h" << std::endl;
-		file << "call onExportFuncCall" << std::endl;
-		// Restore registers
-		file << "movdqu xmm3, [rsp+16*7+32]" << std::endl;
-		file << "movdqu xmm2, [rsp+16*6+32]" << std::endl;
-		file << "movdqu xmm1, [rsp+16*5+32]" << std::endl;
-		file << "movdqu xmm0, [rsp+16*4+32]" << std::endl;
-		file << "mov r9, [rsp+16*3+32]" << std::endl;
-		file << "mov r8, [rsp+16*2+32]" << std::endl;
-		file << "mov rdx, [rsp+16*1+32]" << std::endl;
-		file << "mov rcx, [rsp+16*0+32]" << std::endl;
-		file << "add rsp, 16*8+32" << std::endl;
-		// Restore stack
-		file << "mov rsp, rbp" << std::endl;
-		file << "pop rbp" << std::endl;
-
-		// Jump to address of original function
-		file << "jmp qword ptr [originalDllExports+0" << std::hex << i * 8 << std::dec << "h]" << std::endl;
-
+		file << "\tfwdcall " << i << std::endl;
 		file << "Proxy_" << dllExport << " endp" << std::endl;
 	}
 
